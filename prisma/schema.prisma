@@ -1,0 +1,99 @@
+// Banco de dados local em arquivo (SQLite) — simples de rodar, sem precisar instalar servidor de banco.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  ADMIN     // você
+  GERENTE   // Eloísa
+  VENDEDORA // Carla (e futuras vendedoras)
+  MARKETING // Luiza
+}
+
+enum Stage {
+  NOVO             // acabou de chegar por WhatsApp, ainda não foi cadastrado o atendimento
+  EM_ATENDIMENTO   // vendedora está conversando / entendendo a necessidade
+  PROPOSTA         // orçamento/proposta enviada
+  FECHADO          // venda ganha
+  PERDIDO          // venda perdida
+}
+
+enum Origem {
+  WHATSAPP
+  INSTAGRAM
+  INDICACAO
+  LOJA_FISICA
+  SITE
+  OUTRO
+}
+
+model User {
+  id        String   @id @default(cuid())
+  nome      String
+  role      Role
+  senhaHash String   @default("")
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  leads      Lead[]      @relation("VendedorLeads")
+  eventos    LeadEvent[]
+  auditorias AuditLog[]
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  nomeCliente    String
+  whatsapp       String
+  oQueProcurou   String   // ex: "cozinha planejada", "MDF branco 15mm", "closet"
+  origem         Origem   @default(WHATSAPP)
+  stage          Stage    @default(NOVO)
+
+  vendedorId     String
+  vendedor       User     @relation("VendedorLeads", fields: [vendedorId], references: [id])
+
+  produtoVendido String?  // o que foi efetivamente vendido (pode diferir do que foi procurado)
+  valorFechado   Float?   // faturamento gerado por esse cliente
+  motivoPerda    String?  // preenchido quando stage = PERDIDO
+
+  dataFechamento DateTime? // quando o lead virou FECHADO ou PERDIDO — usado para o relatório por dia
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  eventos        LeadEvent[]
+}
+
+// Histórico/linha do tempo do lead: mudanças de etapa e observações da vendedora
+model LeadEvent {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  autorId   String
+  autor     User     @relation(fields: [autorId], references: [id])
+
+  tipo      String   // "NOTA" | "MUDANCA_ETAPA" | "CADASTRO"
+  texto     String
+  deStage   Stage?
+  paraStage Stage?
+
+  createdAt DateTime @default(now())
+}
+
+// Trilha de auditoria geral: login, gestão de usuários — tudo que não é específico de um lead
+// (o que é específico de um lead já fica no LeadEvent).
+model AuditLog {
+  id      String @id @default(cuid())
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
+
+  acao    String // "LOGIN" | "USUARIO_CRIADO" | "USUARIO_DESATIVADO" | "SENHA_REDEFINIDA"
+  detalhe String
+
+  createdAt DateTime @default(now())
+}
